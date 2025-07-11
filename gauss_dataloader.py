@@ -33,15 +33,21 @@ def load_ply_data(path, max_sh_degree=3):
         features_dc[:, 2, 0] = np.asarray(plydata.elements[0]["f_dc_2"])
 
         extra_f_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_rest_")]
-        extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
-        assert len(extra_f_names)==3*(max_sh_degree + 1) ** 2 - 3
-        features_extra = np.zeros((xyz.shape[0], len(extra_f_names)))
-        for idx, attr_name in enumerate(extra_f_names):
-            features_extra[:, idx] = np.asarray(plydata.elements[0][attr_name])
+        #print(f'extra_f_names : {extra_f_names}');  #exit(1)
+        #print(f'max_sh_degree : {max_sh_degree}');  exit(1)
+        if extra_f_names:
+            extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
+            assert len(extra_f_names) == 3 * (max_sh_degree + 1) ** 2 - 3
+            features_extra = np.zeros((xyz.shape[0], len(extra_f_names)))
+            for idx, attr_name in enumerate(extra_f_names):
+                features_extra[:, idx] = np.asarray(plydata.elements[0][attr_name])
 
-        features_extra = features_extra.reshape((features_extra.shape[0], 3, (max_sh_degree + 1) ** 2 - 1))
+            features_extra = features_extra.reshape((features_extra.shape[0], 3, (max_sh_degree + 1) ** 2 - 1))
 
-        features_all = torch.cat((torch.tensor(features_dc, device="cuda:0"), torch.tensor(features_extra, device="cuda:0")), 2)
+            features_all = torch.cat((torch.tensor(features_dc, device="cuda:0"), torch.tensor(features_extra, device="cuda:0")), 2)
+            #print(f'features_all.shape : {features_all.shape}, features_dc.shape : {features_dc.shape}, features_extra.shape : {features_extra.shape}');    exit(1)
+        else:
+            features_all = torch.tensor(features_dc, device="cuda:0")
 
         colours = computeColorFromLowDegSH(features_all)
     

@@ -143,11 +143,33 @@ def sample_from_multivariate_normal(means, covariances, num_points_to_sample, ma
     If an error occurs, it is assumed that a Gaussian is not positive semi-definite, and thus a strong regularisaion approach is used to fix this
     This is attempted a set number of times before returning None.
     """
-
     for i in range(max_num_gen_attempts):
         try:
+            print(f'i : {i} / {max_num_gen_attempts}')
+            print(f'means.shape : {means.shape}, covariances.shape : {covariances.shape}')
+            print(f'means.min() : {means.min()}, means.max() : {means.max()}')
+            print(f'covariances.min() : {covariances.min()}, covariances.max() : {covariances.max()}')
+            B, D = 321809, 3
+            # 평균 벡터 µ (차원 D)
+            mean = torch.zeros(B, D)
+            # 공분산 행렬 Σ (DxD)
+            cov = torch.eye(D).unsqueeze(0).expand(B, D, D).contiguous()
+            mvn = MultivariateNormal(mean, cov)
+            t0 = mvn.sample((num_points_to_sample,))
+            print(f'num_points_to_sample : {num_points_to_sample}')
+            print(f'mean.shape : {mean.shape}')
+            print(f'cov.shape : {cov.shape}')
+            print(f't0.shape : {t0.shape}')
+            print(f'mvn : {mvn}')
+
+            mulvarnor = MultivariateNormal(means, covariances)
+            print(f'mulvarnor : {mulvarnor}')
+            t1 = mulvarnor.sample((num_points_to_sample,))
+            print(f't1.shape : {t1.shape}')
+            #exit(1)
             original_sampled_points = MultivariateNormal(means, covariances).sample((num_points_to_sample,))
         except Exception as e:
+            print(f"Error in multivariate: {e}")
             covariances += (epsilon * torch.eye(3, device=covariances.get_device()))
         else:
             return original_sampled_points
@@ -187,12 +209,18 @@ def create_new_gaussian_points(num_points_to_sample, means, covariances, colours
     new_normals =  torch.tensor([], device=device).type(torch.double) if normals is not None else None
 
     i = 0
-
+    iT = 0
     # Loop until all required points have been sampled or the maximium number of attempts has been exceeded
     while new_points.shape[0] < total_required_points and i < num_attempts:
-
+        iT += 1
+        n_pt = new_points.shape[0]
+        if 0 == n_pt % 1000:
+            print(f'n_pt : {n_pt} / {total_required_points}, iT : {iT}')
         # Get Gaussian which do not curretly have the maximum number of points to be sampled from
-        gaussians_to_add = added_points != num_points_to_sample  
+        print(f'num_points_to_sample : {num_points_to_sample}');
+        print(f'added_points : {added_points}')
+        gaussians_to_add = added_points != num_points_to_sample
+        print(f'gaussians_to_add.shape : {gaussians_to_add.shape}')
         new_means_for_point = means[gaussians_to_add]
         new_covariances_for_point = covariances[gaussians_to_add]
         new_colours_for_point = colours[gaussians_to_add]
@@ -200,19 +228,22 @@ def create_new_gaussian_points(num_points_to_sample, means, covariances, colours
 
         gaussians_to_add_idxs = gaussians_to_add.nonzero().squeeze(1)
 
+        '''
         # Sample 'num_points_to_sample' number of points for each gaussian
         original_sampled_points = sample_from_multivariate_normal(new_means_for_point, new_covariances_for_point, num_points_to_sample)
-
+        print(f'original_sampled_points : {original_sampled_points}')
         # If no valid points were generated, then skip to next set of points to generate
         if original_sampled_points is None:
             print("WARNING: Could not generate points for some Gaussians due to error sampling from multivariate normal distribution")
             continue
-
+        '''
+        original_sampled_points = new_means_for_point.unsqueeze(0)
         sampled_points = original_sampled_points.transpose(0, 1).contiguous().view(-1, original_sampled_points.size(2))
-
+        print(f'new_means_for_point.shape : {new_means_for_point.shape}')
+        print(f'num_points_to_sample : {num_points_to_sample}')
         repeated_means = torch.repeat_interleave(new_means_for_point, num_points_to_sample, dim=0)
         repeated_covariances = torch.repeat_interleave(new_covariances_for_point, num_points_to_sample, dim=0)
-
+        print(f'repeated_means.shape : {repeated_means.shape}, sampled_points.shape : {sampled_points.shape}');   exit(1)
         # Get the mahalanobis_distance_std distance between the point and its centre gaussian        
         mahalanobis_distances = mahalanobis(repeated_means, sampled_points, repeated_covariances)
         
@@ -323,8 +354,9 @@ def generate_pointcloud(gaussians, num_points, contributions=None, mahalanobis_d
     for i in tqdm(range(point_distribution.shape[0]), position=0, leave=True, disable=quiet):
 
         start_range = point_distribution[i]
-
-        if i != point_distribution.shape[0]-1:
+        #print(f'start_range : {start_range}')
+        #print(f'point_distribution.shape : {point_distribution.shape}')
+        if i != point_distribution.shape[0] - 1:
             end_range = point_distribution[i+1]
         else:
             end_range = start_range+1
@@ -333,8 +365,9 @@ def generate_pointcloud(gaussians, num_points, contributions=None, mahalanobis_d
         gaussian_indices = torch.where((points_per_gaussian >= start_range) & (points_per_gaussian < end_range))[0]
 
         # Number of points to generate for that gaussian
-        num_points_for_gaussian = floor(start_range + (end_range-start_range)/2)
-
+        #num_points_for_gaussian = floor(start_range + (end_range - start_range) / 2)
+        num_points_for_gaussian = 1
+        
         if num_points_for_gaussian <= 0:
             continue
 
@@ -357,9 +390,7 @@ def generate_pointcloud(gaussians, num_points, contributions=None, mahalanobis_d
             continue
 
         # Sample the rest of the required points
-        new_points, new_colours, new_normals = create_new_gaussian_points(num_points_for_gaussian-1, mean_for_point, covariances_for_point,
-                                                             centre_colours, mahalanobis_distance_std=mahalanobis_distance_std, num_attempts=num_sample_attempts, 
-                                                             normals=normals_for_point, device=device)
+        new_points, new_colours, new_normals = create_new_gaussian_points(num_points_for_gaussian - 1, mean_for_point, covariances_for_point, centre_colours, mahalanobis_distance_std = mahalanobis_distance_std, num_attempts = num_sample_attempts, normals = normals_for_point, device=device)
 
         total_points = torch.cat((total_points, new_points), 0)
         total_colours = torch.cat((total_colours, new_colours), 0)
@@ -409,7 +440,6 @@ def convert_3dgs_to_pc(input_path, transform_path, mask_path, pointcloud_setting
     
     # Load gaussian data from file
     xyz, scales, rots, colours, opacities, shs = load_gaussians(input_path, max_sh_degree=pointcloud_settings.max_sh_degree)
-
     gaussians = Gaussians(xyz, scales, rots, colours, opacities, shs=shs)
 
     # Calculate Gaussian Normals
@@ -480,10 +510,14 @@ def convert_3dgs_to_pc(input_path, transform_path, mask_path, pointcloud_setting
         gaussians.colours = gaussian_renderer.get_gaussian_colours()
 
         # Remove Gaussians that are not close to the predicted surface (depending on the STD)
+        #t0 = pointcloud_settings.surface_distance_std
+        #print(f't0 : {t0}');    exit(1);    #   None
         if pointcloud_settings.surface_distance_std is not None:
             gaussians.add_gaussians_to_cull(gaussian_renderer.get_gaussians_with_low_surface_distance())
 
         # Remove Gaussians that were not rendered at all
+        #t0 = pointcloud_settings.remove_unrendered_gaussians
+        #print(f't0 : {t0}');    exit(1);    #   None
         if pointcloud_settings.remove_unrendered_gaussians:
             gaussians.add_gaussians_to_cull(gaussian_renderer.get_visible_gaussians())
 
@@ -547,6 +581,8 @@ def convert_3dgs_to_pc(input_path, transform_path, mask_path, pointcloud_setting
                                                                                               device=pointcloud_settings.device, 
                                                                                               quiet=pointcloud_settings.quiet)
 
+    print(f'xyz.shape : {xyz.shape}');  
+    print(f'points.shape : {points.shape}');    #exit(1)  
     total_point_cloud = PointCloudData(
         points = points,
         colours = colours,
